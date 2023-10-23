@@ -9,4 +9,5 @@ Senior Design Project
 
 # Run Commands
     - run.cmd: CARLABIOMETRICS\CARLA_0.9.14\WindowsNoEditor\PythonAPI\examples\App_Zephyr_main
-    - manual_wheel_zephyr.py: CARLABIOMETRICS\CARLA_0.9.14\WindowsNoEditor\PythonAPI\examples
+    - CarlaUE4.exe: CARLABIOMETRICS\CARLA_0.9.14\WindowsEditor
+    - python manual_wheel_zephyr.py: CARLABIOMETRICS\CARLA_0.9.14\WindowsNoEditor\PythonAPI\examples
