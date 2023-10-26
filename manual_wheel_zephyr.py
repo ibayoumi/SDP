@@ -106,7 +106,7 @@ try:
     from xdf_viewer import start_stream
     
 except ImportError:
-    raise RuntimeError('cannot import numpy, make sure numpy package is installed')
+    raise RuntimeError('Cannot import new libraries')
 
 
 # ==============================================================================
@@ -464,7 +464,8 @@ class HUD(object):
             collision,
             '',
             'Number of vehicles: % 8d' % len(vehicles),
-            'BPM: ' , self.biometrics]
+            'Heart Rate: % 16s' % self.biometrics[0],
+            'Breathing Rate: % 12s' % self.biometrics[1][:5]]
         if len(vehicles) > 1:
             self._info_text += ['Nearby vehicles:']
             distance = lambda l: math.sqrt((l.x - t.location.x)**2 + (l.y - t.location.y)**2 + (l.z - t.location.z)**2)
@@ -780,6 +781,13 @@ class CameraManager(object):
 # ==============================================================================
 
 
+def send_quit_flag(flag): ###########
+     ################
+    if flag:
+        parent_conn.send(flag)
+         ##############
+
+
 def game_loop(args):
     pygame.init()
     pygame.font.init()
@@ -800,14 +808,16 @@ def game_loop(args):
         clock = pygame.time.Clock()
         while True:
             clock.tick_busy_loop(60)
-            if controller.parse_events(world, clock):
+            if controller.parse_events(world, clock): ######################
                 return
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
 
     finally:
-
+        send_quit_flag(True)
+        child_conn.close()
+        parent_conn.close()
         if world is not None:
             world.destroy()
 
@@ -864,7 +874,6 @@ def main():
     print(__doc__)
 
     try:
-
         game_loop(args)
 
     except KeyboardInterrupt:
