@@ -10,6 +10,7 @@ from sklearn.neural_network import MLPClassifier
 # BIOHARNESS/BIOMETRICS
 from pylsl import StreamInlet, resolve_stream, resolve_streams
 import pyhrv
+import biosppy
 
 # NUMPY
 import numpy as np
@@ -47,6 +48,8 @@ def get_biometrics(gen_inlet, rr_inlet, show_window=False, show_result=False):
     # Convert HR samples into SDNN, RMSSD, and mean HR
     hr_window = []
     rr_window = []
+    # hr_window = [68.0, 70.0, 69.0, 68.0, 67.0, 64.0, 62.0, 63.0, 62.0, 61.0, 63.0, 69.0, 71.0, 70.0, 67.0, 66.0, 64.0, 63.0, 64.0, 63.0, 65.0, 67.0, 67.0, 68.0, 68.0, 66.0, 64.0, 65.0, 64.0, 65.0, 67.0]
+    # rr_window = [0.872, 0.872, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, -0.8220000000000001, -0.8220000000000001]
     # Can either use time() or belt's timestamp. Don't know which would be best.
     init_time = time()
     final_time = time()
@@ -57,7 +60,7 @@ def get_biometrics(gen_inlet, rr_inlet, show_window=False, show_result=False):
         rr_sample, rr_timestamp = rr_inlet.pull_sample()
 
         hr_window.append(gen_sample[2])
-        rr_window.append(rr_sample[0])
+        rr_window.append(rr_sample[0] * (10**-3))
 
         final_time = time()
 
@@ -66,14 +69,15 @@ def get_biometrics(gen_inlet, rr_inlet, show_window=False, show_result=False):
         print("RR Window: ", rr_window)
 
     # Calculate sdnn, rmssd
-    sdnn = pyhrv.time_domain.sdnn(rr_window)['sdnn']
-    rmssd = pyhrv.time_domain.rmssd(rr_window)['rmssd']
+    sdnn = pyhrv.time_domain.sdnn(rr_window)['sdnn'] * (10**-2)
+    rmssd = pyhrv.time_domain.rmssd(rr_window)['rmssd'] * (10**-2)
     mean_hr = np.mean(hr_window)
 
     if(show_result):
         print("SDNN: ", sdnn)
         print("RMSSD: ", rmssd)
         print("MEAN HR: ", mean_hr)
+        #print("PYHRV MEAN HR: ", pyhrv.time_domain.hr_parameters(rr_window[10:12])['hr_mean'] * (10**3))
     
     return np.array([sdnn, rmssd, mean_hr])
 
@@ -126,14 +130,15 @@ print("Validation Accuracy: ", val_accuracy)
 
 # Pull samples from BioHarness and predict human state using ML Model
 # TODO: While loop that continuously pulls samples and predicts
-X_te = get_biometrics(general_inlet, rr_inlet)
+while(True):
+    X_te = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
 
-y_te_pred = mlp_classifier.predict(X_te.reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+    y_te_pred = mlp_classifier.predict(X_te.reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
 
-# Confidence Score
-conf = mlp_classifier.predict_proba(X_te.reshape(1,-1))
-print(conf)
-print(mlp_classifier.classes_)
+    # Confidence Score
+    conf = mlp_classifier.predict_proba(X_te.reshape(1,-1))
+    print(conf)
+    print(mlp_classifier.classes_)
 
-# TODO: Send data to CARLA (create function/module for this)
+    # TODO: Send data to CARLA (create function/module for this)
 
