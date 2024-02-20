@@ -22,7 +22,11 @@ brake = []
 steer = []
 attrafficlight = []
 heartrate = []
+breathingrate = []
+stress = []
+drowsy = []
 prev_time = 0
+
 for row in arr[1:]:
 	#if row[0] != prev_time:
 		timestamp.append(float(row[0].split(':')[1] + '.' + row[0].split(':')[2]))
@@ -32,6 +36,9 @@ for row in arr[1:]:
 		steer.append(float(row[4]))
 		attrafficlight.append(float(row[5]))
 		heartrate.append(float(row[6]))
+		breathingrate.append(float(row[7]))
+		stress.append(float(row[8]))
+		drowsy.append(float(row[9]))
 	#prev_time = row[0]
 
 
@@ -45,11 +52,13 @@ attrafficlight = arr[1:,5]
 heartrate = arr[1:,6]
 """
 
-fig, axes = plt.subplots(3, 1, figsize=(12, 3))
-axes[0].plot(timestamp, heartrate)
-axes[0].legend(['heartrate'])
+fig, axes = plt.subplots(4, 1, figsize=(12, 3))
+axes[0].plot(timestamp, heartrate, timestamp, breathingrate)
+axes[0].legend(['heartrate', 'breathingrate'])
 axes[1].plot(timestamp, speed)
 axes[1].legend(['speed'])
 axes[2].plot(timestamp, throttle, timestamp, brake, timestamp, steer, timestamp, attrafficlight)
 axes[2].legend(['throttle', 'brake', 'steer', 'attrafficlight'])
+axes[3].plot(timestamp, stress, timestamp, drowsy)
+axes[3].legend(['stress', 'drowsy'])
 plt.show()

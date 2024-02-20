@@ -409,7 +409,9 @@ class HUD(object):
         #self.biometrics = 0
         self.heart_rate = 0
         self.breathing_rate = 0
-        self.conf_arr = [0, 0]
+        self.stress_conf_arr = [0, 0]
+        self.drowsy_conf_arr = [0, 0]
+        self.rtor = 0
 
     def on_world_tick(self, timestamp):
         self._server_clock.tick()
@@ -466,10 +468,12 @@ class HUD(object):
         
         if parent_conn.poll():
             self.biometrics = parent_conn.recv()
-            print(self.biometrics)
+            #print(self.biometrics)
             self.heart_rate = self.biometrics[0]
             self.breathing_rate = self.biometrics[1][:5]
-            self.conf_arr = self.biometrics[2][0]
+            self.stress_conf_arr = self.biometrics[2][0]
+            self.drowsy_conf_arr = self.biometrics[3][0]
+            self.rtor = self.biometrics[4]
 
         self._info_text += [
             '',
@@ -478,7 +482,8 @@ class HUD(object):
             '',
             'Number of vehicles: % 8d' % len(vehicles),
             'Heart Rate: % 16s' % self.heart_rate,
-            'Breathing Rate: % 12s' % self.breathing_rate]
+            'Breathing Rate: % 12s' % self.breathing_rate,
+            'R to R: % 16s' % self.rtor]
 
         """
         vehicle = world.player
@@ -503,12 +508,22 @@ class HUD(object):
         self._info_text += [f"Brake: {vehicle_brake}"]
         self._info_text += [f"Steer: {vehicle_steer}"]
         
-        self._info_text += [f"Confidence arr: {self.conf_arr}"]
+        self._info_text += [f"Stress Confidence arr: {self.stress_conf_arr}"]
+        self._info_text += [f"Drowsiness Confidence arr: {self.drowsy_conf_arr}"]
 
-        def write_to_file(flag):
+        def write_to_file(flag, stress, drowsy):
             with open("data_log.csv", 'a') as file:
                 file.write('\n')
-                file.write(curr_time + ',' + str(vehicle_speed) + ',' + str(vehicle_throttle) + ',' + str(vehicle_brake) + ',' + str(vehicle_steer) + ',' + flag + ',' + str(self.heart_rate))
+                file.write(curr_time + ',' + str(vehicle_speed) + ',' + str(vehicle_throttle) + ',' + str(vehicle_brake) + ',' + str(vehicle_steer) + ',' + flag + ',' + str(self.heart_rate) + ',' + str(self.breathing_rate) + ',' + stress + ',' + drowsy)
+        
+        if self.stress_conf_arr[0] > 0.7:
+            stress = "0"
+        else:
+            stress = "1"
+        if self.drowsy_conf_arr[0] > 0.7:
+            drowsy = "0"
+        else:
+            drowsy = "1"
 
         if vehicle.is_at_traffic_light():
             traffic_light = vehicle.get_traffic_light()
@@ -516,10 +531,10 @@ class HUD(object):
             traffic_light_y = round(traffic_light.get_transform().location.y,2)
             self._info_text += [f"VEHICLE IS NOW AT TRAFFIC LIGHT"]
             self._info_text += [f"Traffic Light Location: ({traffic_light_x}, {traffic_light_y})"]
-            #write_to_file("1")
+            write_to_file("1", stress, drowsy)
         else:
-            #write_to_file("0")
-            pass
+            write_to_file("0", stress, drowsy)
+            #pass
 
         #########################################################################
 
@@ -913,7 +928,8 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1280x720',
+        #default='1280x720',
+        default='4160x768',
         help='window resolution (default: 1280x720)')
     argparser.add_argument(
         '--filter',

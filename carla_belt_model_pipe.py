@@ -5,13 +5,14 @@ from time import sleep, time
 import sys
 
 # IMPORTS
-
+import collections
 # SKLEARN
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import cross_val_score
 from sklearn.metrics import accuracy_score, zero_one_loss
 from sklearn.neural_network import MLPClassifier
+from sklearn.tree import DecisionTreeClassifier
 
 # BIOHARNESS/BIOMETRICS
 from pylsl import resolve_streams
@@ -48,49 +49,23 @@ def start_stream(child_conn):
             A NumPy array of a list in the following form:
             [sdnn, rmsdd, mean_hr]
         """
-
-        # Convert HR samples into SDNN, RMSSD, and mean HR
-        hr_window = []
-        rr_window = []
-        # hr_window = [68.0, 70.0, 69.0, 68.0, 67.0, 64.0, 62.0, 63.0, 62.0, 61.0, 63.0, 69.0, 71.0, 70.0, 67.0, 66.0, 64.0, 63.0, 64.0, 63.0, 65.0, 67.0, 67.0, 68.0, 68.0, 66.0, 64.0, 65.0, 64.0, 65.0, 67.0]
-        # rr_window = [0.872, 0.872, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, -0.893, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, 0.868, -0.8220000000000001, -0.8220000000000001]
-        # Can either use time() or belt's timestamp. Don't know which would be best.
-        init_time = time()
-        final_time = time()
-
-        # Take 30s intervals
-        while (final_time - init_time < 30):
-            gen_sample, gen_timestamp = gen_inlet.pull_sample()
-            rr_sample, rr_timestamp = rr_inlet.pull_sample()
-
-            hr_window.append(gen_sample[2])
-            rr_window.append(rr_sample[0] * (10**-3))
-
-            final_time = time()
-
-        if(show_window):
-            print("HR Window: ", hr_window)
-            print("RR Window: ", rr_window)
-
-        # Calculate sdnn, rmssd
-        sdnn = pyhrv.time_domain.sdnn(rr_window)['sdnn'] * (10**-2)
-        rmssd = pyhrv.time_domain.rmssd(rr_window)['rmssd'] * (10**-2)
-        mean_hr = np.mean(hr_window)
-
-        if(show_result):
-            print("SDNN: ", sdnn)
-            print("RMSSD: ", rmssd)
-            print("MEAN HR: ", mean_hr)
-            #print("PYHRV MEAN HR: ", pyhrv.time_domain.hr_parameters(rr_window[10:12])['hr_mean'] * (10**3))
+        gen_sample, gen_timestamp = gen_inlet.pull_sample()
+        rr_sample, rr_timstamp = rr_inlet.pull_sample()
+        hr = gen_sample[2]
+        br = gen_sample[3]
+        rr = rr_sample[0]
     
-        return np.array([sdnn, rmssd, mean_hr])
+        return np.array([hr, br, rr])
 
 
+    
     # Read in data and convert to numpy array
     #data = pd.read_csv("extracted_stress_data.csv")
-    data = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_stress_data.csv")
+    data = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_stress_data_no_ecg.csv")
     data = data.to_numpy()
 
+    data_drowsy = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_drowsy_data.csv")
+    data_drowsy = data_drowsy.to_numpy()
     # first resolve an EEG stream on the lab network
     print("looking for an EEG stream...")
     streams = resolve_streams()
@@ -108,31 +83,52 @@ def start_stream(child_conn):
     rr_inlet = StreamInlet(rrStream)
 
 
-    # Train ML Model
+    # ---- Train ML Models ----
 
+    # ----  Train Stress Model  ----
     # Data Splits
-    X, y = data[:,:3], data[:,-1]
-    X_tr, X_val, y_tr, y_val = train_test_split(X, y, test_size=0.2, random_state=seed, shuffle=True)
+    #Xs, ys = data[:,:3], data[:,3]    # Use this when GSR included
+    Xs, ys = data[:,1:3], data[:,-1]
+    Xs_tr, Xs_val, ys_tr, ys_val = train_test_split(Xs, ys, test_size=0.2, random_state=seed, shuffle=True)
 
-    # Create and train classifier
-    mlp_classifier = MLPClassifier(hidden_layer_sizes = (100,10,400), activation='relu', solver='sgd', learning_rate='constant', learning_rate_init=0.001, momentum=0.1, batch_size=30, max_iter=300)
-    mlp_classifier.fit(X_tr, y_tr)
+    # Initialize the model
+    #dt_stress = DecisionTreeClassifier(criterion='entropy', max_depth=15, min_samples_split=200, min_samples_leaf=50)
+    dt_stress = DecisionTreeClassifier(criterion='entropy', max_depth=100, min_samples_split=10, min_samples_leaf=1, max_features='log2', ccp_alpha=0.0000001)
 
-    # Compute the training and test error rates
-    y_tr_pred = mlp_classifier.predict(X_tr)
-    tr_accuracy = accuracy_score(y_tr, y_tr_pred)
-    tr_error = 1 - (tr_accuracy)
+    # Fit the model to the training set
+    dt_stress.fit(Xs_tr, ys_tr)
 
-    y_val_pred = mlp_classifier.predict(X_val)
-    val_accuracy = accuracy_score(y_val, y_val_pred)
-    val_error = 1 - (val_accuracy)
+    # Compute the training and test errors
+    ys_tr_pred = dt_stress.predict(Xs_tr)
+    train_error_s = 1 - (accuracy_score(ys_tr, ys_tr_pred))
 
-    print("Training Error: ", tr_error)
-    print("Validation Error: ", val_error)
+    ys_val_pred = dt_stress.predict(Xs_val)
+    val_error_s = 1 - (accuracy_score(ys_val, ys_val_pred))
 
-    print("Training Accuracy: ", tr_accuracy)
-    print("Validation Accuracy: ", val_accuracy)
+    print("Stress Training Error: ", train_error_s)
+    print("Stress Testing Error: ", val_error_s)
 
+
+    # ----  Train Drowsy ML model  ----
+    Xd, yd = data_drowsy[:,:6], data_drowsy[:,-1]
+    Xd_tr, Xd_val, yd_tr, yd_val = train_test_split(Xd, yd, test_size=0.25, random_state=seed, shuffle=True)
+
+    # Initialize the model
+    dt_drowsy = DecisionTreeClassifier(criterion="entropy", splitter='best', max_depth=40, min_samples_split=50, min_samples_leaf=50, min_weight_fraction_leaf=0.0,
+                           max_features=None, random_state=1234, max_leaf_nodes = 1000)
+
+    # Fit the model to the training set
+    dt_drowsy.fit(Xd_tr, yd_tr)
+
+    # Compute the training and test errors
+    yd_tr_pred = dt_drowsy.predict(Xd_tr)
+    train_error_d = 1 - (accuracy_score(yd_tr, yd_tr_pred))
+
+    yd_val_pred = dt_drowsy.predict(Xd_val)
+    val_error_d = 1 - (accuracy_score(yd_val, yd_val_pred))
+
+    print("Drowsy Training Error: ", train_error_d)
+    print("Drowsy Testing Error: ", val_error_d)
 
     print("Intializing zephyrGeneral")
     #streams = resolve_stream('name', 'ZephyrGeneral')
@@ -141,8 +137,10 @@ def start_stream(child_conn):
     print("PAST STREAMS")
     #inlet = StreamInlet(streams[0])
 
-    conf = [0, 0]
-
+    stress_conf = [0, 0]
+    drowsy_conf = [0, 0]
+    zeros = [0] * 100
+    rtor = collections.deque(zeros, 100)
     # Pull samples from BioHarness and predict human state using ML Model
     # TODO: While loop that continuously pulls samples and predicts
     while True:
@@ -150,18 +148,35 @@ def start_stream(child_conn):
             child_conn.close()
             break
 
-        X_te = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
-
-        y_te_pred = mlp_classifier.predict(X_te.reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+        # ---- Stress Predictions ----
+        Xd_te = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
+        Xs_te = Xd_te[:2]
+        ys_te_pred = dt_stress.predict(Xs_te.reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
 
         # Confidence Score
-        conf = mlp_classifier.predict_proba(X_te.reshape(1,-1))
-        print(conf)
-        print(mlp_classifier.classes_)
+        stress_conf = dt_stress.predict_proba(Xs_te.reshape(1,-1))
+        #print("S Conf", stress_conf)
+        #print("S Classes", dt_stress.classes_)
 
-        # TODO: Send data to CARLA (create function/module for this)    
-        
+        # ---- Drowsy Predictions ----
+        #Xd_te = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
+        rtor.append(abs(Xd_te[2]))
+        rtor_list = list(rtor)
+        sdnn = pyhrv.time_domain.sdnn(rtor_list)[0]
+        rmssd = pyhrv.time_domain.rmssd(rtor_list)[0]
+        mean_nn = pyhrv.time_domain.nni_parameters(rtor_list)[1]
+        pNN50 = pyhrv.time_domain.nn50(rtor_list)[1]
+        pNN20 = pyhrv.time_domain.nn20(rtor_list)[1]
+        sdsd = pyhrv.time_domain.sdsd(rtor_list)[0]
+        yd_te_pred = dt_drowsy.predict(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20,sdsd]).reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+
+        # Confidence Score
+        drowsy_conf = dt_drowsy.predict_proba(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20,sdsd]).reshape(1,-1))
+        #print("D Conf", drowsy_conf)
+        #print("D Classes", dt_drowsy.classes_)
+
+        # Send data to CARLA (create function/module for this)    
         sample, timestamp = general_inlet.pull_sample()
         sleep(0.5)
-        msg = [str(sample[2]), str(sample[3]), conf]
+        msg = [str(sample[2]), str(sample[3]), stress_conf, drowsy_conf, Xd_te[2]]
         child_conn.send(msg)
