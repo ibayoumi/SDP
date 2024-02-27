@@ -152,7 +152,8 @@ class World(object):
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
         # Get a random blueprint.
-        blueprint = random.choice(self.world.get_blueprint_library().filter(self._actor_filter))
+        #blueprint = random.choice(self.world.get_blueprint_library().filter(self._actor_filter))
+        blueprint = self.world.get_blueprint_library().filter('model3')[0]
         blueprint.set_attribute('role_name', 'hero')
         if blueprint.has_attribute('color'):
             color = random.choice(blueprint.get_attribute('color').recommended_values)
@@ -412,6 +413,9 @@ class HUD(object):
         self.stress_conf_arr = [0, 0]
         self.drowsy_conf_arr = [0, 0]
         self.rtor = 0
+        
+        with open("data_log_i1.csv", 'a') as file:
+            file.write("Timestamp,Speed,Throttle,Brake,Steer,AtTrafficLight,HeartRate,BreathingRate,Stress,Drowsy")
 
     def on_world_tick(self, timestamp):
         self._server_clock.tick()
@@ -508,14 +512,21 @@ class HUD(object):
         self._info_text += [f"Brake: {vehicle_brake}"]
         self._info_text += [f"Steer: {vehicle_steer}"]
         
-        self._info_text += [f"Stress Confidence arr: {self.stress_conf_arr}"]
-        self._info_text += [f"Drowsiness Confidence arr: {self.drowsy_conf_arr}"]
+        # self._info_text += [f"Stress Confidence arr: {self.stress_conf_arr}"]
+        # self._info_text += [f"Drowsiness Confidence arr: {self.drowsy_conf_arr}"]
+
+        self._info_text += [f"No Stress Confidence: {self.stress_conf_arr[0]}"]
+        self._info_text += [f"Stress Confidence: {self.stress_conf_arr[1]}"]
+
+        self._info_text += [f"Not Drowsy Confidence: {self.drowsy_conf_arr[0]}"]
+        self._info_text += [f"Drowsy Confidence: {self.drowsy_conf_arr[1]}"]
 
         def write_to_file(flag, stress, drowsy):
-            with open("data_log.csv", 'a') as file:
+            with open("data_log_i1.csv", 'a') as file:
                 file.write('\n')
-                file.write(curr_time + ',' + str(vehicle_speed) + ',' + str(vehicle_throttle) + ',' + str(vehicle_brake) + ',' + str(vehicle_steer) + ',' + flag + ',' + str(self.heart_rate) + ',' + str(self.breathing_rate) + ',' + stress + ',' + drowsy)
+                file.write(curr_time + ',' + str(vehicle_speed) + ',' + str(vehicle_throttle) + ',' + str(vehicle_brake) + ',' + str(vehicle_steer) + ',' + flag + ',' + str(self.heart_rate) + ',' + str(self.breathing_rate) + ',' + str(stress) + ',' + str(drowsy))
         
+        """
         if self.stress_conf_arr[0] > 0.7:
             stress = "0"
         else:
@@ -524,6 +535,7 @@ class HUD(object):
             drowsy = "0"
         else:
             drowsy = "1"
+        """
 
         if vehicle.is_at_traffic_light():
             traffic_light = vehicle.get_traffic_light()
@@ -531,9 +543,9 @@ class HUD(object):
             traffic_light_y = round(traffic_light.get_transform().location.y,2)
             self._info_text += [f"VEHICLE IS NOW AT TRAFFIC LIGHT"]
             self._info_text += [f"Traffic Light Location: ({traffic_light_x}, {traffic_light_y})"]
-            write_to_file("1", stress, drowsy)
+            write_to_file("1", self.stress_conf_arr[1], self.drowsy_conf_arr[1])
         else:
-            write_to_file("0", stress, drowsy)
+            write_to_file("0", self.stress_conf_arr[1], self.drowsy_conf_arr[1])
             #pass
 
         #########################################################################
@@ -868,7 +880,7 @@ def game_loop(args):
 
     try:
         client = carla.Client(args.host, args.port)
-        client.set_timeout(2.0)
+        client.set_timeout(10.0) #2.0
 
         display = pygame.display.set_mode(
             (args.width, args.height),

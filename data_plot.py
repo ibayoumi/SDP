@@ -11,7 +11,7 @@ for index in range(7):
 print(np.array(matrix))
 """
 
-arr = np.loadtxt("data_log.csv", delimiter=",", dtype=str)
+arr = np.loadtxt("data_log_i1.csv", delimiter=",", dtype=str)
 print(arr)
 
 
