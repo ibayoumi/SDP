@@ -7,6 +7,7 @@ from sklearn.model_selection import cross_val_score
 from sklearn.metrics import accuracy_score, zero_one_loss
 from sklearn.neural_network import MLPClassifier
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 # BIOHARNESS/BIOMETRICS
 from pylsl import StreamInlet, resolve_stream, resolve_streams
@@ -44,6 +45,11 @@ def get_biometrics(gen_inlet, rr_inlet, show_window=False, show_result=False):
     -------
         A NumPy array of a list in the following form:
         [sdnn, rmsdd, mean_hr]
+    """
+    gen_sample, gen_timestamp = gen_inlet.pull_sample()
+    hr = gen_sample[2]
+    br = gen_sample[3]
+
     """
 
     # Convert HR samples into SDNN, RMSSD, and mean HR
@@ -83,6 +89,11 @@ def get_biometrics(gen_inlet, rr_inlet, show_window=False, show_result=False):
     return np.array([sdnn, rmssd, mean_hr])
 
 
+    """
+
+    return np.array([hr, br])
+
+
 # Read in data and convert to numpy array
 data = pd.read_csv("C:\\Users\\citla\\SeniorDesign\\Datasets\\external_data\\MIT_driver_stress\\extracted_stress_data_no_ecg.csv")
 data = data.to_numpy()
@@ -108,18 +119,18 @@ rr_inlet = StreamInlet(rrStream)
 
 # Data Splits
 # Split into X and Y
-X, y = data[:,:3], data[:,3]
+X, y = data[:,1:3], data[:,-1]
 X_tr, X_val, y_tr, y_val = train_test_split(X, y, test_size=0.2, random_state=seed, shuffle=True)
 
 # Initialize the model
-dt = DecisionTreeClassifier(criterion='entropy', max_depth=15, min_samples_split=200, min_samples_leaf=50)
+# dt = DecisionTreeClassifier(criterion='entropy', max_depth=15, min_samples_split=200, min_samples_leaf=50)
+dt = RandomForestClassifier(n_estimators=50, criterion='entropy', max_depth=45, min_samples_split=50, min_samples_leaf=50, max_leaf_nodes=150)
 
 # Fit the model to the training set
 dt.fit(X_tr, y_tr)
 
 # Compute the training and test errors
 y_tr_pred = dt.predict(X_tr)
-train_error = 1 - (accuracy_score(y_tr, y_tr_pred))
 train_error = 1 - (accuracy_score(y_tr, y_tr_pred))
 
 y_val_pred = dt.predict(X_val)
@@ -134,6 +145,7 @@ while(True):
     X_te = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
 
     y_te_pred = dt.predict(X_te.reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+    print(y_te_pred)
 
     # Confidence Score
     conf = dt.predict_proba(X_te.reshape(1,-1))
