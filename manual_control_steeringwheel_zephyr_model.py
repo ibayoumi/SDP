@@ -410,9 +410,10 @@ class HUD(object):
         #self.biometrics = 0
         self.heart_rate = 0
         self.breathing_rate = 0
-        self.stress_conf_arr = [0, 0]
-        self.drowsy_conf_arr = [0, 0]
+        self.stress_conf = [0,0]
+        self.drowsy_conf = [0,0]
         self.rtor = 0
+        self.attrafficlight = "0"
         
         with open("data_log_i1.csv", 'a') as file:
             file.write("Timestamp,Speed,Throttle,Brake,Steer,AtTrafficLight,HeartRate,BreathingRate,Stress,Drowsy")
@@ -475,8 +476,8 @@ class HUD(object):
             #print(self.biometrics)
             self.heart_rate = self.biometrics[0]
             self.breathing_rate = self.biometrics[1][:5]
-            self.stress_conf_arr = self.biometrics[2][0]
-            self.drowsy_conf_arr = self.biometrics[3][0]
+            self.stress_conf = self.biometrics[2]
+            self.drowsy_conf = self.biometrics[3]
             self.rtor = self.biometrics[4]
 
         self._info_text += [
@@ -515,11 +516,16 @@ class HUD(object):
         # self._info_text += [f"Stress Confidence arr: {self.stress_conf_arr}"]
         # self._info_text += [f"Drowsiness Confidence arr: {self.drowsy_conf_arr}"]
 
+        """
         self._info_text += [f"No Stress Confidence: {self.stress_conf_arr[0]}"]
         self._info_text += [f"Stress Confidence: {self.stress_conf_arr[1]}"]
 
         self._info_text += [f"Not Drowsy Confidence: {self.drowsy_conf_arr[0]}"]
         self._info_text += [f"Drowsy Confidence: {self.drowsy_conf_arr[1]}"]
+        """
+
+        self._info_text += [f"Stress Confidence: {self.stress_conf}"]
+        self._info_text += [f"Drowsy Confidence: {self.drowsy_conf}"]
 
         def write_to_file(flag, stress, drowsy):
             with open("data_log_i1.csv", 'a') as file:
@@ -543,10 +549,11 @@ class HUD(object):
             traffic_light_y = round(traffic_light.get_transform().location.y,2)
             self._info_text += [f"VEHICLE IS NOW AT TRAFFIC LIGHT"]
             self._info_text += [f"Traffic Light Location: ({traffic_light_x}, {traffic_light_y})"]
-            write_to_file("1", self.stress_conf_arr[1], self.drowsy_conf_arr[1])
+            self.attrafficlight = "1"
         else:
-            write_to_file("0", self.stress_conf_arr[1], self.drowsy_conf_arr[1])
-            #pass
+            self.attrafficlight = "0"
+
+        write_to_file(self.attrafficlight, self.stress_conf, self.drowsy_conf)
 
         #########################################################################
 

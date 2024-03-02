@@ -6,6 +6,7 @@ import sys
 
 # IMPORTS
 import collections
+
 # SKLEARN
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
@@ -14,7 +15,6 @@ from sklearn.metrics import accuracy_score, zero_one_loss
 from sklearn.neural_network import MLPClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-
 
 # BIOHARNESS/BIOMETRICS
 from pylsl import resolve_streams
@@ -27,13 +27,14 @@ import numpy as np
 # PANDAS
 import pandas as pd
 
+import matplotlib.pyplot as plt
+
 # CONSTANTS
 seed = 1234
 
 
 def start_stream(child_conn):
 
-    # FUNCTIONS
     def get_biometrics(gen_inlet, rr_inlet, show_window=False, show_result=False):
         """
         Function that extracts HRV features from BioHarness data. The HRV
@@ -56,18 +57,9 @@ def start_stream(child_conn):
         hr = gen_sample[2]
         br = gen_sample[3]
         rr = rr_sample[0]
-    
         return np.array([hr, br, rr])
 
 
-    
-    # Read in data and convert to numpy array
-    #data = pd.read_csv("extracted_stress_data.csv")
-    data = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_stress_data_no_ecg.csv")
-    data = data.to_numpy()
-
-    data_drowsy = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_drowsy_data.csv")
-    data_drowsy = data_drowsy.to_numpy()
     # first resolve an EEG stream on the lab network
     print("looking for an EEG stream...")
     streams = resolve_streams()
@@ -85,54 +77,71 @@ def start_stream(child_conn):
     rr_inlet = StreamInlet(rrStream)
 
 
-    # ---- Train ML Models ----
+    # ---- Stress ML Model ----
 
-    # ----  Train Stress Model  ----
-    # Data Splits
-    #Xs, ys = data[:,:3], data[:,3]    # Use this when GSR included
-    Xs, ys = data[:,1:3], data[:,-1]
-    Xs_tr, Xs_val, ys_tr, ys_val = train_test_split(Xs, ys, test_size=0.2, random_state=seed, shuffle=True)
+    # Stress dataset
+    data_stress = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_stress_data_no_ecg.csv")
+    data_stress = data_stress.to_numpy()
 
-    # Initialize the model
-    #dt_stress = DecisionTreeClassifier(criterion='entropy', max_depth=15, min_samples_split=200, min_samples_leaf=50)  # this was the original model
-    #dt_stress = DecisionTreeClassifier(criterion='entropy', max_depth=100, min_samples_split=10, min_samples_leaf=1, max_features='log2', ccp_alpha=0.0000001)
-    rf_stress = RandomForestClassifier(n_estimators=100, criterion='entropy', max_depth=1000, min_samples_split=200, min_samples_leaf=10, max_leaf_nodes=51000)
+    # Stress training/testing split
+    Xs, ys = data_stress[:,1:3], data_stress[:,-1]
+    Xs_train, Xs_test, ys_train, ys_test = train_test_split(Xs, ys, test_size=0.5, random_state=seed, shuffle=True)
 
-    # Fit the model to the training set
-    rf_stress.fit(Xs_tr, ys_tr)
+    # Stress NN model
+    nn_stress = MLPClassifier(learning_rate_init=0.001, hidden_layer_sizes=(70,14), activation='logistic', solver='adam', learning_rate='constant', early_stopping=False, max_iter=1000, n_iter_no_change=100, random_state=seed)
+    nn_stress.fit(Xs_train, ys_train)
 
-    # Compute the training and test errors
-    ys_tr_pred = rf_stress.predict(Xs_tr)
-    train_error_s = 1 - (accuracy_score(ys_tr, ys_tr_pred))
+    # Stress get training error
+    s_train_pred = nn_stress.predict(Xs_train)
+    s_train_error = 1 - (accuracy_score(ys_train, s_train_pred))
 
-    ys_val_pred = rf_stress.predict(Xs_val)
-    val_error_s = 1 - (accuracy_score(ys_val, ys_val_pred))
+    # Stress get testing error
+    s_test_pred = nn_stress.predict(Xs_test)
+    s_test_error = 1 - (accuracy_score(ys_test, s_test_pred))
 
-    print("Stress Training Error: ", train_error_s)
-    print("Stress Testing Error: ", val_error_s)
+    print("Stress Training Error: ", s_train_error)
+    print("Stress Testing Error: ", s_test_error)
 
 
-    # ----  Train Drowsy ML model  ----
-    Xd, yd = data_drowsy[:,:5], data_drowsy[:,-1]
-    Xd_tr, Xd_val, yd_tr, yd_val = train_test_split(Xd, yd, test_size=0.25, random_state=seed, shuffle=True)
+    # ---- Drowsy ML Model ----
 
-    # Initialize the model
-    #dt_drowsy = DecisionTreeClassifier(criterion="entropy", splitter='best', max_depth=40, min_samples_split=50, min_samples_leaf=50, min_weight_fraction_leaf=0.0,
-    #                       max_features=None, random_state=1234, max_leaf_nodes = 1000)
-    #rf_drowsy = RandomForestClassifier(n_estimators=150, criterion='entropy', max_depth=1000, min_samples_split=200, min_samples_leaf=1, max_leaf_nodes=100000)
-    rf_drowsy = MLPClassifier(learning_rate_init=0.01, hidden_layer_sizes=(300,200,50), activation='relu', solver='adam', learning_rate='constant')
-    # Fit the model to the training set
-    rf_drowsy.fit(Xd_tr, yd_tr)
+    # Drowsy dataset
+    data_drowsy = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_drowsy_data.csv")
+    data_drowsy = data_drowsy.to_numpy()
 
-    # Compute the training and test errors
-    yd_tr_pred = rf_drowsy.predict(Xd_tr)
-    train_error_d = 1 - (accuracy_score(yd_tr, yd_tr_pred))
+    # Drowsy training/testing split
+    Xd, yd = data_drowsy[:,1:6], data_drowsy[:,-1]
+    Xd_train, Xd_test, yd_train, yd_test = train_test_split(Xd, yd, test_size=0.15, random_state=seed, shuffle=True)
 
-    yd_val_pred = rf_drowsy.predict(Xd_val)
-    val_error_d = 1 - (accuracy_score(yd_val, yd_val_pred))
+    # Drowsy NN model
+    nn_drowsy = MLPClassifier(learning_rate_init=0.0006, hidden_layer_sizes=(200,100,2), activation='logistic', solver='adam', learning_rate='constant', early_stopping=False, max_iter=1000, n_iter_no_change=200, random_state=seed)
+    nn_drowsy.fit(Xd_train, yd_train)
 
-    print("Drowsy Training Error: ", train_error_d)
-    print("Drowsy Testing Error: ", val_error_d)
+    # Drowsy get training error
+    d_train_pred = nn_drowsy.predict(Xd_train)
+    d_train_error = 1 - (accuracy_score(yd_train, d_train_pred))
+
+    # Drowsy get testing error
+    d_test_pred = nn_drowsy.predict(Xd_test)
+    d_test_error = 1 - (accuracy_score(yd_test, d_test_pred))
+
+    print("Drowsy Training Error: ", d_train_error)
+    print("Drowsy Testing Error: ", d_test_error)
+
+
+    # Plot Stress and Drowsy loss over epoch
+    fig, axes = plt.subplots(1, 2, figsize=(9, 3))
+    axes[0].set_title("Stress NN Model")
+    axes[0].plot(range(nn_stress.n_iter_), nn_stress.loss_curve_)
+    axes[0].set_xlabel("epoch")
+    axes[0].set_ylabel("loss")
+    axes[1].set_title("Drowsy NN Model")
+    axes[1].plot(range(nn_drowsy.n_iter_), nn_drowsy.loss_curve_)
+    axes[1].set_xlabel("epoch")
+    axes[1].set_ylabel("loss")
+    #plt.show()
+    
+    
 
     print("Intializing zephyrGeneral")
     #streams = resolve_stream('name', 'ZephyrGeneral')
@@ -155,38 +164,35 @@ def start_stream(child_conn):
         # ---- Stress Predictions ----
         Xd_te = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
         Xs_te = Xd_te[:2]
-        ys_te_pred = rf_stress.predict(Xs_te.reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+        # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+        stress_pred = nn_stress.predict(Xs_te.reshape(1,-1))
 
-        # Confidence Score
-        stress_conf = rf_stress.predict_proba(Xs_te.reshape(1,-1))
+        # Stress Confidence Score
+        stress_conf = nn_stress.predict_proba(Xs_te.reshape(1,-1))
         print("SP:", Xs_te)
-        #stress_conf = dt_stress.predict_proba(np.array([40, 5]).reshape(1,-1))
         print("S Conf", stress_conf)
-        #print("S Classes", dt_stress.classes_)
+        print("S Classes", nn_stress.classes_)
 
         # ---- Drowsy Predictions ----
-        #Xd_te = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
         if(abs(Xd_te[2]) != list(rtor)[-1]):
             rtor.append(abs(Xd_te[2]))
         rtor_list = list(rtor)
-        #print(rtor_list)
         sdnn = pyhrv.time_domain.sdnn(rtor_list)[0]
         rmssd = pyhrv.time_domain.rmssd(rtor_list)[0]
         mean_nn = pyhrv.time_domain.nni_parameters(rtor_list)[1]
         pNN50 = pyhrv.time_domain.nn50(rtor_list)[1]
         pNN20 = pyhrv.time_domain.nn20(rtor_list)[1]
-        sdsd = pyhrv.time_domain.sdsd(rtor_list)[0]
-        print("DrP:", np.array([sdnn,rmssd,mean_nn,pNN50,pNN20,sdsd]))
-        yd_te_pred = rf_drowsy.predict(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20,sdsd]).reshape(1,-1))  # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+        # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
+        drowsy_pred = nn_drowsy.predict(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20]).reshape(1,-1))
 
-        # Confidence Score
-        drowsy_conf = rf_drowsy.predict_proba(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20,sdsd]).reshape(1,-1))
+        # Drowsy Confidence Score
+        drowsy_conf = nn_drowsy.predict_proba(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20]).reshape(1,-1))
+        print("DP:", np.array([sdnn,rmssd,mean_nn,pNN50,pNN20]))
         print("D Conf", drowsy_conf)
-        #print("D Classes", dt_drowsy.classes_)
-
-        # Send data to CARLA (create function/module for this)    
+        print("D Classes", nn_drowsy.classes_)
+        # Send data to CARLA
         sample, timestamp = general_inlet.pull_sample()
         #sleep(0.5)
-        msg = [str(sample[2]), str(sample[3]), stress_conf, drowsy_conf, Xd_te[2]]
+        msg = [str(sample[2]), str(sample[3]), stress_conf[0][1], drowsy_conf[0][1], Xd_te[2]]
         print(msg)
         child_conn.send(msg)
