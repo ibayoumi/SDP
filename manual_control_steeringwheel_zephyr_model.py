@@ -407,15 +407,17 @@ class HUD(object):
         self._show_info = True
         self._info_text = []
         self._server_clock = pygame.time.Clock()
-        #self.biometrics = 0
-        self.heart_rate = 0
-        self.breathing_rate = 0
-        self.stress_conf = [0,0]
-        self.drowsy_conf = [0,0]
-        self.rtor = 0
+
+        self.heart_rate = 0.0
+        self.breathing_rate = 0.0
+        self.rtor = 0.0
+        self.stress_conf = 0.000
+        self.drowsy_conf = 0.000
+        self.lightflag = False
         self.attrafficlight = "0"
+        self.setupcomplete = False
         
-        with open("data_log_i1.csv", 'a') as file:
+        with open("data_log_i1.csv", 'w') as file:
             file.write("Timestamp,Speed,Throttle,Brake,Steer,AtTrafficLight,HeartRate,BreathingRate,Stress,Drowsy")
 
     def on_world_tick(self, timestamp):
@@ -467,36 +469,45 @@ class HUD(object):
             self._info_text += [
                 ('Speed:', c.speed, 0.0, 5.556),
                 ('Jump:', c.jump)]
-        
-
-        #########################################################################
-        
-        if parent_conn.poll():
-            self.biometrics = parent_conn.recv()
-            #print(self.biometrics)
-            self.heart_rate = self.biometrics[0]
-            self.breathing_rate = self.biometrics[1][:5]
-            self.stress_conf = self.biometrics[2]
-            self.drowsy_conf = self.biometrics[3]
-            self.rtor = self.biometrics[4]
-
         self._info_text += [
             '',
             'Collision:',
             collision,
             '',
-            'Number of vehicles: % 8d' % len(vehicles),
-            'Heart Rate: % 16s' % self.heart_rate,
-            'Breathing Rate: % 12s' % self.breathing_rate,
-            'R to R: % 16s' % self.rtor]
+            'Number of vehicles: % 8d' % len(vehicles)]
 
-        """
-        vehicle = world.player
-        vehicle_X = round(vehicle.get_transform().location.x,2)
-        vehicle_Y = round(vehicle.get_transform().location.y,2)
-        self._info_text += [f"Vehicle Location: ({vehicle_X}, {vehicle_Y})"]
-        """
+        #########################################################################
+        
+        if parent_conn.poll():
+            self.biometrics = parent_conn.recv()
+            self.heart_rate = self.biometrics[0]
+            self.breathing_rate = self.biometrics[1]
+            self.rtor = self.biometrics[2]
+            self.stress_conf = self.biometrics[3]
+            self.drowsy_conf = self.biometrics[4]
+            
+        try:
+            float(self.heart_rate)
+            self.setupcomplete = True
+        except:
+            self.setupcomplete = False
 
+        if self.setupcomplete:
+            self._info_text += [
+                '',
+                "Heart Rate: % 16.1f" % float(self.heart_rate),
+                "Breathing Rate: % 12.1f" % float(self.breathing_rate),
+                "R to R: % 20.1f" % float(self.rtor),
+                "Stress Confidence: % 9.3f" % float(self.stress_conf),
+                "Drowsy Confidence: % 9.3f" % float(self.drowsy_conf)]
+        else:
+            self._info_text += [
+                '',
+                "Heart Rate: % 16s" % self.heart_rate,
+                "Breathing Rate: % 12s" % self.breathing_rate,
+                "R to R: % 20s" % self.rtor,
+                "Stress Confidence: % 9s" % self.stress_conf,
+                "Drowsy Confidence: % 9s" % self.drowsy_conf]
 
         vehicle = world.player
         vehicle_x = round(vehicle.get_transform().location.x,2)
@@ -506,26 +517,17 @@ class HUD(object):
         vehicle_throttle = round(vehicle.get_control().throttle,2)
         vehicle_brake = round(vehicle.get_control().brake,2)
         vehicle_steer = round(vehicle.get_control().steer,2)
-
+        
+        """
         self._info_text += [f"Location: ({vehicle_x}, {vehicle_y})"]
         self._info_text += [f"Speed: {vehicle_speed}"]
         self._info_text += [f"Throttle: {vehicle_throttle}"]
         self._info_text += [f"Brake: {vehicle_brake}"]
         self._info_text += [f"Steer: {vehicle_steer}"]
         
-        # self._info_text += [f"Stress Confidence arr: {self.stress_conf_arr}"]
-        # self._info_text += [f"Drowsiness Confidence arr: {self.drowsy_conf_arr}"]
-
-        """
-        self._info_text += [f"No Stress Confidence: {self.stress_conf_arr[0]}"]
-        self._info_text += [f"Stress Confidence: {self.stress_conf_arr[1]}"]
-
-        self._info_text += [f"Not Drowsy Confidence: {self.drowsy_conf_arr[0]}"]
-        self._info_text += [f"Drowsy Confidence: {self.drowsy_conf_arr[1]}"]
-        """
-
         self._info_text += [f"Stress Confidence: {self.stress_conf}"]
         self._info_text += [f"Drowsy Confidence: {self.drowsy_conf}"]
+        """
 
         def write_to_file(flag, stress, drowsy):
             with open("data_log_i1.csv", 'a') as file:
@@ -543,15 +545,22 @@ class HUD(object):
             drowsy = "1"
         """
 
-        if vehicle.is_at_traffic_light():
-            traffic_light = vehicle.get_traffic_light()
-            traffic_light_x = round(traffic_light.get_transform().location.x,2)
-            traffic_light_y = round(traffic_light.get_transform().location.y,2)
-            self._info_text += [f"VEHICLE IS NOW AT TRAFFIC LIGHT"]
-            self._info_text += [f"Traffic Light Location: ({traffic_light_x}, {traffic_light_y})"]
+        traffic_lights = world.world.get_actors().filter('traffic.traffic_light')
+        for tl in traffic_lights:
+            if tl.get_state() == carla.TrafficLightState.Green:
+                tl.set_state(carla.TrafficLightState.Red)
+
+        if vehicle.is_at_traffic_light() and not self.lightflag:
+            #traffic_light = vehicle.get_traffic_light()
+            #traffic_light_x = round(traffic_light.get_transform().location.x,2)
+            #traffic_light_y = round(traffic_light.get_transform().location.y,2)
+            #self._info_text += [f"VEHICLE IS NOW AT TRAFFIC LIGHT"]
+            #self._info_text += [f"Traffic Light Location: ({traffic_light_x}, {traffic_light_y})"]
             self.attrafficlight = "1"
         else:
             self.attrafficlight = "0"
+
+        self.lightflag = vehicle.is_at_traffic_light()
 
         write_to_file(self.attrafficlight, self.stress_conf, self.drowsy_conf)
 
