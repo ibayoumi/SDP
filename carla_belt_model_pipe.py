@@ -5,6 +5,7 @@ import random
 from time import sleep, time
 import sys
 import collections
+import pickle
 
 # SKLEARN
 from sklearn import preprocessing
@@ -21,6 +22,12 @@ from pylsl import resolve_streams
 import pyhrv
 import biosppy
 
+# OSC
+from osc4py3.as_eventloop import*
+from osc4py3 import oscmethod as osm
+import logging
+import threading
+
 # NUMPY
 import numpy as np
 
@@ -32,6 +39,10 @@ import matplotlib.pyplot as plt
 
 # CONSTANTS
 seed = 1234
+
+# GLOBALS
+gsr_val = 0
+
 
 
 def start_stream(child_conn):
@@ -60,6 +71,21 @@ def start_stream(child_conn):
         rr = rr_sample[0]
         return np.array([hr, br, rr])
 
+ 
+    def handlerfunction(*args):
+        for arg in args:
+            global gsr_val
+            gsr_val = arg
+
+    osc_startup()
+    IP = '192.168.159.189'
+    PORT = 8000
+    osc_udp_client(IP, PORT, "udplisten")
+    osc_udp_server(IP, PORT, "udpclient")
+
+    # Associate Python functions with message address patterns, using defaults argument
+    osc_method("/edaMikroS", handlerfunction, argscheme=osm.OSCARG_DATAUNPACK)
+
 
     # Resolve streams
     print("looking for an EEG stream...")
@@ -76,14 +102,14 @@ def start_stream(child_conn):
 
 
     # ---- Stress ML Model ----
-
+    """
     # Stress dataset
     data_stress = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_stress_data_no_ecg.csv")
     data_stress = (data_stress-data_stress.min())/(data_stress.max()-data_stress.min())
     data_stress = data_stress.to_numpy()
 
     # Stress training/testing split
-    Xs, ys = data_stress[:,1:3], data_stress[:,-1]
+    Xs, ys = data_stress[:,1:4], data_stress[:,-1]
     Xs_train, Xs_test, ys_train, ys_test = train_test_split(Xs, ys, test_size=0.5, random_state=seed, shuffle=True)
 
     # Stress NN model
@@ -100,20 +126,29 @@ def start_stream(child_conn):
 
     print("Stress Training Error: ", s_train_error)
     print("Stress Testing Error: ", s_test_error)
+    """
+    
+    f = open("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/stress_pickle", "rb")
+    nn_stress = pickle.load(f)
+    f.close()
+ 
 
 
     # ---- Drowsy ML Model ----
-
+    """
     # Drowsy dataset
-    data_drowsy = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_drowsy_data.csv")
+    data_drowsy = pd.read_csv("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/extracted_drowsy_data_filtered.csv")
+    data_drowsy = data_drowsy.drop(['MeanNN'], axis=1)
+    data_drowsy['pNN50'] = data_drowsy['pNN50']/100
+    data_drowsy['pNN20'] = data_drowsy['pNN20']/100
     data_drowsy = data_drowsy.to_numpy()
 
     # Drowsy training/testing split
-    Xd, yd = data_drowsy[:,1:6], data_drowsy[:,-1]
-    Xd_train, Xd_test, yd_train, yd_test = train_test_split(Xd, yd, test_size=0.15, random_state=seed, shuffle=True)
+    Xd, yd = data_drowsy[:,1:5], data_drowsy[:,-1]
+    Xd_train, Xd_test, yd_train, yd_test = train_test_split(Xd, yd, test_size=0.25, random_state=seed, shuffle=True)
 
     # Drowsy NN model
-    nn_drowsy = MLPClassifier(learning_rate_init=0.0006, hidden_layer_sizes=(200,100,2), activation='logistic', solver='adam', learning_rate='constant', early_stopping=False, max_iter=1000, n_iter_no_change=200, random_state=seed)
+    nn_drowsy = MLPClassifier(learning_rate_init=0.0006, hidden_layer_sizes=(200,100,3), activation='logistic', solver='adam', learning_rate='constant', early_stopping=False, max_iter=5000, n_iter_no_change=1000, random_state=seed)
     nn_drowsy.fit(Xd_train, yd_train)
 
     # Drowsy get training error
@@ -126,7 +161,13 @@ def start_stream(child_conn):
 
     print("Drowsy Training Error: ", d_train_error)
     print("Drowsy Testing Error: ", d_test_error)
+    """
 
+
+    f = open("D:/SDP_Biometric_ADAS_CARLA_0.9.14/WindowsNoEditor/PythonAPI/examples/App_Zephyr_main/drowsy_model.pickle", "rb")
+    nn_drowsy = pickle.load(f)
+    f.close()
+ 
 
     # Plot Stress and Drowsy loss over epoch
     fig, axes = plt.subplots(1, 2, figsize=(9, 3))
@@ -139,7 +180,7 @@ def start_stream(child_conn):
     axes[1].set_xlabel("epoch")
     axes[1].set_ylabel("loss")
     plt.show()
-    
+
 
     print("Intializing zephyrGeneral")
     msg = "Zephyr stream is working!!!!"
@@ -148,8 +189,8 @@ def start_stream(child_conn):
 
     stress_conf = [0, 0]
     drowsy_conf = [0, 0]
-    rtor = collections.deque([923], 20)
-
+    rtor_queue = collections.deque([923], 60)
+    prev_value = 0
     # Pull samples from BioHarness and predict human state using ML Models
     while True:
         if child_conn.poll():
@@ -158,17 +199,26 @@ def start_stream(child_conn):
 
         # ---- Stress Predictions ----
         live = get_biometrics(general_inlet, rr_inlet, show_window=True, show_result=True)
-        live_stress = live[:2]
-        print("HR", live_stress[0])
-        print("BR", live_stress[1])
+        osc_process()
 
+        live_stress = list(live[:2])
+        live_stress.append(gsr_val)
+        live_stress = np.array(live_stress)
+        hr = str(live_stress[0])
+        br = str(live_stress[1])
+        gsr = str(live_stress[2])
+        
         # Normalize heart rate and breathing rate values
         live_stress[0] = (live_stress[0]-25)/(240-25)
         live_stress[1] = (live_stress[1]-4)/(70-4)
+        live_stress[2] = (live_stress[2]-1)/(20-1)
 
         # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
         stress_pred = nn_stress.predict(live_stress.reshape(1,-1))
         stress_conf = nn_stress.predict_proba(live_stress.reshape(1,-1))
+        print("HR", hr)
+        print("BR", br)
+        print("GSR", gsr)
         print("S Pred", stress_pred)
         print("S Conf", stress_conf)
         print("S Classes", nn_stress.classes_)
@@ -177,20 +227,22 @@ def start_stream(child_conn):
 
         # ---- Drowsy Predictions ----
         live_drowsy = live[2]
+        rtor = str(abs(live_drowsy))
 
-        if(abs(live_drowsy) != list(rtor)[-1]):
-            rtor.append(abs(live_drowsy))
-        rtor_list = list(rtor)
+        if(live_drowsy != prev_value):
+            prev_value = live_drowsy
+            rtor_queue.append(abs(live_drowsy))
+        rtor_list = list(rtor_queue)
         sdnn = pyhrv.time_domain.sdnn(rtor_list)[0]
         rmssd = pyhrv.time_domain.rmssd(rtor_list)[0]
         mean_nn = pyhrv.time_domain.nni_parameters(rtor_list)[1]
-        pNN50 = pyhrv.time_domain.nn50(rtor_list)[1]
-        pNN20 = pyhrv.time_domain.nn20(rtor_list)[1]
+        pNN50 = pyhrv.time_domain.nn50(rtor_list)[1]/100
+        pNN20 = pyhrv.time_domain.nn20(rtor_list)[1]/100
 
         # Expects 2D array. "Reshape your data using array.reshape(1,-1) if it contains a single sample"
         drowsy_pred = nn_drowsy.predict(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20]).reshape(1,-1))
         drowsy_conf = nn_drowsy.predict_proba(np.array([sdnn,rmssd,mean_nn,pNN50,pNN20]).reshape(1,-1))
-        print("R to R", rtor)
+        print("R to R", rtor_queue)
         print("Array", [sdnn,rmssd,mean_nn,pNN50,pNN20])
         print("D Pred", drowsy_pred)
         print("D Conf", drowsy_conf)
@@ -198,8 +250,9 @@ def start_stream(child_conn):
         print()
 
         # Send data to CARLA
-        sample, timestamp = general_inlet.pull_sample()
-        msg = [str(sample[2]), str(sample[3]), live_drowsy, stress_conf[0][1], drowsy_conf[0][1]]
+        msg = [hr, br, gsr, rtor, stress_conf[0][1], drowsy_conf[0][1]]
         print(msg)
         print()
         child_conn.send(msg)
+
+    osc_terminate()
