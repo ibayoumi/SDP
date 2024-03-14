@@ -29,7 +29,6 @@ from __future__ import print_function
 import glob
 import os
 import sys
-from collections import defaultdict 
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -408,19 +407,21 @@ class HUD(object):
         self._show_info = True
         self._info_text = []
         self._server_clock = pygame.time.Clock()
-
+        #########################################################################
         self.heart_rate = 0.0
         self.breathing_rate = 0.0
+        self.gsr = 0.0
         self.rtor = 0.0
         self.stress_conf = 0.000
         self.drowsy_conf = 0.000
         self.lightflag = False
         self.attrafficlight = "0"
         self.setupcomplete = False
-        self.hr_log = defaultdict(int)
+        self.hr_log = collections.deque([0], 200)
         
         with open("data_log_i1.csv", 'w') as file:
-            file.write("Timestamp,Speed,Throttle,Brake,Steer,AtTrafficLight,HeartRate,BreathingRate,GSR,Stress,Drowsy")
+            file.write("Timestamp,Speed,Throttle,Brake,Steer,AtTrafficLight,HeartRate,BreathingRate,GSR,RtoR,Stress,Drowsy")
+        #########################################################################
 
     def on_world_tick(self, timestamp):
         self._server_clock.tick()
@@ -479,7 +480,6 @@ class HUD(object):
             'Number of vehicles: % 8d' % len(vehicles)]
 
         #########################################################################
-        
         if parent_conn.poll():
             self.biometrics = parent_conn.recv()
             self.heart_rate = self.biometrics[0]
@@ -488,9 +488,6 @@ class HUD(object):
             self.rtor = self.biometrics[3]
             self.stress_conf = self.biometrics[4]
             self.drowsy_conf = self.biometrics[5]
-        
-        if float(self.heart_rate) != 0:
-            self.hr_log[self.frame] = float(self.heart_rate)
 
         try:
             float(self.heart_rate)
@@ -499,15 +496,15 @@ class HUD(object):
             self.setupcomplete = False
 
         if self.setupcomplete:
-            hr_plot = [self.hr_log[x + self.frame - 200] for x in range(0, 200)]
-            max_hr = max(1.0, max(hr_plot))
-            hr_plot = [x / max_hr for x in hr_plot]
-            print(hr_plot)
+            self.hr_log.append(float(self.heart_rate))
+            hr_plot = list(self.hr_log)
+            hr_plot = [x / 150 for x in hr_plot]
 
             self._info_text += [
                 '',
                 "Heart Rate: % 16.1f" % float(self.heart_rate),
                 hr_plot,
+                '',
                 "Breathing Rate: % 12.1f" % float(self.breathing_rate),
                 "GSR: % 23.1f" % float(self.gsr),
                 "R to R: % 20.1f" % float(self.rtor),
@@ -538,15 +535,12 @@ class HUD(object):
         self._info_text += [f"Throttle: {vehicle_throttle}"]
         self._info_text += [f"Brake: {vehicle_brake}"]
         self._info_text += [f"Steer: {vehicle_steer}"]
-        
-        self._info_text += [f"Stress Confidence: {self.stress_conf}"]
-        self._info_text += [f"Drowsy Confidence: {self.drowsy_conf}"]
         """
 
         def write_to_file(flag, stress, drowsy):
             with open("data_log_i1.csv", 'a') as file:
                 file.write('\n')
-                file.write(curr_time + ',' + str(vehicle_speed) + ',' + str(vehicle_throttle) + ',' + str(vehicle_brake) + ',' + str(vehicle_steer) + ',' + flag + ',' + str(self.heart_rate) + ',' + str(self.breathing_rate) + ',' + str(self.gsr) + ',' + str(stress) + ',' + str(drowsy))
+                file.write(curr_time + ',' + str(vehicle_speed) + ',' + str(vehicle_throttle) + ',' + str(vehicle_brake) + ',' + str(vehicle_steer) + ',' + flag + ',' + str(self.heart_rate) + ',' + str(self.breathing_rate) + ',' + str(self.gsr) + ',' + str(self.rtor) + ',' + str(stress) + ',' + str(drowsy))
         
         traffic_lights = world.world.get_actors().filter('traffic.traffic_light')
         for tl in traffic_lights:
@@ -554,11 +548,13 @@ class HUD(object):
                 tl.set_state(carla.TrafficLightState.Red)
 
         if vehicle.is_at_traffic_light() and not self.lightflag:
-            #traffic_light = vehicle.get_traffic_light()
-            #traffic_light_x = round(traffic_light.get_transform().location.x,2)
-            #traffic_light_y = round(traffic_light.get_transform().location.y,2)
-            #self._info_text += [f"VEHICLE IS NOW AT TRAFFIC LIGHT"]
-            #self._info_text += [f"Traffic Light Location: ({traffic_light_x}, {traffic_light_y})"]
+            """
+            traffic_light = vehicle.get_traffic_light()
+            traffic_light_x = round(traffic_light.get_transform().location.x,2)
+            traffic_light_y = round(traffic_light.get_transform().location.y,2)
+            self._info_text += [f"VEHICLE IS NOW AT TRAFFIC LIGHT"]
+            self._info_text += [f"Traffic Light Location: ({traffic_light_x}, {traffic_light_y})"]
+            """
             self.attrafficlight = "1"
         else:
             self.attrafficlight = "0"
@@ -566,9 +562,7 @@ class HUD(object):
         self.lightflag = vehicle.is_at_traffic_light()
 
         write_to_file(self.attrafficlight, self.stress_conf, self.drowsy_conf)
-
         #########################################################################
-
 
         if len(vehicles) > 1:
             self._info_text += ['Nearby vehicles:']
