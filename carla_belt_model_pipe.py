@@ -78,7 +78,7 @@ def start_stream(child_conn):
             gsr_val = arg
 
     osc_startup()
-    IP = '192.168.159.189'
+    IP = '172.20.10.4'
     PORT = 8000
     osc_udp_client(IP, PORT, "udplisten")
     osc_udp_server(IP, PORT, "udpclient")

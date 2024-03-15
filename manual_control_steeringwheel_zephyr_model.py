@@ -418,8 +418,10 @@ class HUD(object):
         self.attrafficlight = "0"
         self.setupcomplete = False
         self.hr_log = collections.deque([0], 200)
+        self.br_log = collections.deque([0], 200)
+        self.gsr_log = collections.deque([0], 200)
         
-        with open("data_log_i1.csv", 'w') as file:
+        with open("data_log_i2.csv", 'w') as file:
             file.write("Timestamp,Speed,Throttle,Brake,Steer,AtTrafficLight,HeartRate,BreathingRate,GSR,RtoR,Stress,Drowsy")
         #########################################################################
 
@@ -473,10 +475,10 @@ class HUD(object):
                 ('Speed:', c.speed, 0.0, 5.556),
                 ('Jump:', c.jump)]
         self._info_text += [
-            '',
-            'Collision:',
-            collision,
-            '',
+            #'',
+            #'Collision:',
+            #collision,
+            #'',
             'Number of vehicles: % 8d' % len(vehicles)]
 
         #########################################################################
@@ -500,25 +502,37 @@ class HUD(object):
             hr_plot = list(self.hr_log)
             hr_plot = [x / 150 for x in hr_plot]
 
+            self.br_log.append(float(self.breathing_rate))
+            br_plot = list(self.br_log)
+            br_plot = [x / 35 for x in br_plot]
+
+            self.gsr_log.append(float(self.gsr))
+            gsr_plot = list(self.gsr_log)
+            gsr_plot = [x / 15 for x in gsr_plot]
+
             self._info_text += [
                 '',
                 "Heart Rate: % 16.1f" % float(self.heart_rate),
                 hr_plot,
                 '',
                 "Breathing Rate: % 12.1f" % float(self.breathing_rate),
+                br_plot,
+                '',
                 "GSR: % 23.1f" % float(self.gsr),
-                "R to R: % 20.1f" % float(self.rtor),
-                "Stress Confidence: % 9.1f%%" % float(self.stress_conf*100),
-                "Drowsy Confidence: % 9.1f%%" % float(self.drowsy_conf*100)]
+                gsr_plot,
+                '',
+                #"R to R: % 20.1f" % float(self.rtor),
+                "Stress Confidence: % 9.1f%%" % float(self.stress_conf*100)]
+                #"Drowsy Confidence: % 9.1f%%" % float(self.drowsy_conf*100)]
         else:
             self._info_text += [
                 '',
                 "Heart Rate: % 16s" % self.heart_rate,
                 "Breathing Rate: % 12s" % self.breathing_rate,
                 "GSR: % 23s" % self.gsr,
-                "R to R: % 20s" % self.rtor,
-                "Stress Confidence: % 9s" % self.stress_conf,
-                "Drowsy Confidence: % 9s" % self.drowsy_conf]
+                #"R to R: % 20s" % self.rtor,
+                "Stress Confidence: % 9s" % self.stress_conf]
+                #"Drowsy Confidence: % 9s" % self.drowsy_conf]
 
         vehicle = world.player
         vehicle_x = round(vehicle.get_transform().location.x,2)
@@ -538,7 +552,7 @@ class HUD(object):
         """
 
         def write_to_file(flag, stress, drowsy):
-            with open("data_log_i1.csv", 'a') as file:
+            with open("data_log_i2.csv", 'a') as file:
                 file.write('\n')
                 file.write(curr_time + ',' + str(vehicle_speed) + ',' + str(vehicle_throttle) + ',' + str(vehicle_brake) + ',' + str(vehicle_steer) + ',' + flag + ',' + str(self.heart_rate) + ',' + str(self.breathing_rate) + ',' + str(self.gsr) + ',' + str(self.rtor) + ',' + str(stress) + ',' + str(drowsy))
         
@@ -953,8 +967,8 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        #default='1280x720',
-        default='4160x768',
+        default='1280x720',
+        #default='4160x768',
         help='window resolution (default: 1280x720)')
     argparser.add_argument(
         '--filter',
